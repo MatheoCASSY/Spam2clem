@@ -10,7 +10,10 @@ import os
 import json
 import logging
 import random
-from datetime import time
+from datetime import time, datetime, timedelta
+import threading
+import time as time_mod
+import requests
 from zoneinfo import ZoneInfo
 from typing import List
 
@@ -156,14 +159,58 @@ async def send_kigu(context: ContextTypes.DEFAULT_TYPE):
 
 def schedule_jobs(app):
     tz = ZoneInfo(DEFAULT_TZ)
-    for t in DEFAULT_TIMES:
-        try:
-            hh, mm = [int(x) for x in t.strip().split(":" )]
-            job_time = time(hour=hh, minute=mm, tzinfo=tz)
-            app.job_queue.run_daily(send_kigu, job_time)
-            logger.info("Job planifié chaque jour à %02d:%02d (%s)", hh, mm, DEFAULT_TZ)
-        except Exception:
-            logger.exception("Impossible de planifier l'heure: %s", t)
+    # Préférence : utiliser JobQueue (requiert l'extra [job-queue]). Sinon, fallback en thread.
+    if getattr(app, "job_queue", None):
+        for t in DEFAULT_TIMES:
+            try:
+                hh, mm = [int(x) for x in t.strip().split(":" )]
+                job_time = time(hour=hh, minute=mm, tzinfo=tz)
+                app.job_queue.run_daily(send_kigu, job_time)
+                logger.info("Job planifié chaque jour à %02d:%02d (%s) via JobQueue", hh, mm, DEFAULT_TZ)
+            except Exception:
+                logger.exception("Impossible de planifier l'heure: %s", t)
+    else:
+        logger.warning("JobQueue non disponible — démarrage du scheduler de secours en thread")
+        token = os.getenv("BOT_TOKEN")
+
+        def thread_scheduler(tok, times_list, tzname):
+            tzlocal = ZoneInfo(tzname)
+            base = f"https://api.telegram.org/bot{tok}"
+            while True:
+                now = datetime.now(tzlocal)
+                next_runs = []
+                for ts in times_list:
+                    try:
+                        hh2, mm2 = [int(x) for x in ts.strip().split(":" )]
+                    except Exception:
+                        continue
+                    dt = datetime(now.year, now.month, now.day, hh2, mm2, tzinfo=tzlocal)
+                    if dt <= now:
+                        dt = dt + timedelta(days=1)
+                    next_runs.append(dt)
+                if not next_runs:
+                    time_mod.sleep(60)
+                    continue
+                next_dt = min(next_runs)
+                delta = (next_dt - now).total_seconds()
+                logger.info("Scheduler de secours: attente %.0f secondes jusqu'à %s", delta, next_dt.isoformat())
+                if delta > 0:
+                    time_mod.sleep(delta)
+                # envoi synchrone via HTTP
+                chats = load_chats()
+                if not chats:
+                    logger.info("Aucun chat enregistré — scheduler de secours n'envoie rien.")
+                    continue
+                text = make_message()
+                for chat_id in chats:
+                    try:
+                        resp = requests.post(f"{base}/sendMessage", data={"chat_id": chat_id, "text": text}, timeout=10)
+                        logger.info("Scheduler de secours: envoi à %s status=%s", chat_id, getattr(resp, 'status_code', None))
+                    except Exception:
+                        logger.exception("Erreur lors de l'envoi par scheduler de secours au chat %s", chat_id)
+
+        th = threading.Thread(target=thread_scheduler, args=(token, DEFAULT_TIMES, DEFAULT_TZ), daemon=True)
+        th.start()
 
 
 def main():
