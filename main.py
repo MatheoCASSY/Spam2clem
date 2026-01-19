@@ -126,6 +126,21 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Vous n'étiez pas inscrit.")
 
 
+async def now_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Commande /now : envoie immédiatement un message motivant dans le chat appelant."""
+    try:
+        text = make_message()
+        # on répond directement à la commande avec le message
+        await update.message.reply_text(text)
+        logger.info("/now utilisé par chat %s", update.effective_chat.id)
+    except Exception:
+        logger.exception("Erreur lors du traitement de /now pour le chat %s", update.effective_chat.id)
+        try:
+            await update.message.reply_text("Impossible d'envoyer le message maintenant.")
+        except Exception:
+            pass
+
+
 async def send_kigu(context: ContextTypes.DEFAULT_TYPE):
     """Callback planifié : envoie le message à tous les chats connus."""
     # si un CHAT_ID est défini dans .env, on l'utilise (envoi direct)
@@ -224,6 +239,7 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("stop", stop))
+    app.add_handler(CommandHandler("now", now_command))
 
     schedule_jobs(app)
 
