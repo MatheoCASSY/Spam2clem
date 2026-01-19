@@ -1,0 +1,12 @@
+{
+  "name": "kigurumi-reminder-bot",
+  "version": "1.0.0",
+  "description": "Bot Telegram Python: envoie 5 rappels par jour pour refaire des kigurumis (lancement via npm)",
+  "scripts": {
+    "start": "python main.py",
+    "test": "python -m pytest -q",
+    "send": "python send_now.py"
+  },
+  "author": "",
+  "license": "MIT"
+}

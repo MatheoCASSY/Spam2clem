@@ -1,0 +1,4 @@
+python-telegram-bot>=20.0.0
+python-dotenv>=0.21.0
+pytest
+requests>=2.0.0

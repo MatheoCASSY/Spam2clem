@@ -1,0 +1,8 @@
+# Environnements Python
+__pycache__/
+*.pyc
+.chars
+
+# Fichiers locaux
+chats.json
+.env
